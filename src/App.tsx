@@ -8,6 +8,8 @@ import { getRequiredPercent } from "./lib/ranges";
 
 import CardBox from "./components/CardBox";
 
+import { getAvailableActions } from "./lib/actions";
+
 const categories = [
   "ALL",
   "OPEN_RAISE",
@@ -145,6 +147,7 @@ export default function App() {
 
   const requiredPercent = getScenarioRangePercent(scenario);
   const correctAction = getEffectiveCorrectAction(scenario);
+  const availableActions = getAvailableActions(scenario);
 
   const [result, setResult] = useState("");
   const [answered, setAnswered] = useState(false);
@@ -369,15 +372,15 @@ export default function App() {
             marginTop: "18px",
           }}
         >
-          {scenario.options.map((option, index) => (
+         {availableActions.map((option, index) => (
             <button
               key={option}
               disabled={answered}
               onClick={() => handleAnswer(option)}
               style={{
                 gridColumn:
-                  scenario.options.length % 2 !== 0 &&
-                  index === scenario.options.length - 1
+                  availableActions.length % 2 !== 0 &&
+                  index === availableActions.length - 1
                     ? "1 / -1"
                     : "auto",
                 minHeight: "58px",
