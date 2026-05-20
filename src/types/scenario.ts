@@ -1,4 +1,13 @@
-export type ScenarioModel = "MTT_STANDARD" | "CHIP_EV" | "ICM" | "GTO";
+import {
+  handRanking,
+  isHandInTopPercent,
+} from "../lib/handRanking";
+
+export type ScenarioModel =
+  | "MTT_STANDARD"
+  | "CHIP_EV"
+  | "ICM"
+  | "GTO";
 
 export type ScenarioCategory =
   | "OPEN_RAISE"
@@ -6,7 +15,10 @@ export type ScenarioCategory =
   | "CALL_VS_PUSH"
   | "BLIND_DEFENSE";
 
-export type ScenarioDifficulty = "easy" | "medium" | "hard";
+export type ScenarioDifficulty =
+  | "easy"
+  | "medium"
+  | "hard";
 
 export type Scenario = {
   id: number;
@@ -21,197 +33,51 @@ export type Scenario = {
   options: string[];
   correctAction: string;
   raiseSizeBB?: string;
+  rangePercent?: number;
   explanation: string;
 };
 
 const TARGET_SCENARIO_COUNT = 1000;
 
-const ranks = ["A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"];
-
-const rankValue: Record<string, number> = {
-  A: 14,
-  K: 13,
-  Q: 12,
-  J: 11,
-  T: 10,
-  "9": 9,
-  "8": 8,
-  "7": 7,
-  "6": 6,
-  "5": 5,
-  "4": 4,
-  "3": 3,
-  "2": 2,
-};
-
-function unique<T>(items: T[]): T[] {
-  return Array.from(new Set(items));
-}
-
-function buildHands(): string[] {
-  const hands: string[] = [];
-
-  for (const r of ranks) {
-    hands.push(`${r}${r}`);
-  }
-
-  const highCards = ["A", "K", "Q", "J", "T"];
-
-  for (const high of highCards) {
-    const start = ranks.indexOf(high);
-
-    for (let i = start + 1; i < ranks.length; i++) {
-      const low = ranks[i];
-
-      hands.push(`${high}${low}s`);
-      hands.push(`${high}${low}o`);
-    }
-  }
-
-  for (let i = 0; i < ranks.length - 1; i++) {
-    hands.push(`${ranks[i]}${ranks[i + 1]}s`);
-  }
-
-  for (let i = 0; i < ranks.length - 2; i++) {
-    hands.push(`${ranks[i]}${ranks[i + 2]}s`);
-  }
-
-  for (let i = 0; i < ranks.length - 3; i++) {
-    hands.push(`${ranks[i]}${ranks[i + 3]}s`);
-  }
-
-  return unique(hands);
-}
-
-function getHandScore(hand: string): number {
-  const first = hand[0];
-  const second = hand[1];
-  const suited = hand.endsWith("s");
-  const pair = first === second;
-
-  const high = Math.max(rankValue[first], rankValue[second]);
-  const low = Math.min(rankValue[first], rankValue[second]);
-
-  let score = high + low * 0.55;
-
-  if (pair) score += 8;
-  if (suited) score += 2;
-
-  const gap = Math.abs(rankValue[first] - rankValue[second]);
-
-  if (!pair && gap === 1) score += 2;
-  if (!pair && gap === 2) score += 1;
-  if (!pair && gap === 3) score += 0.4;
-  if (!pair && gap >= 5) score -= 2;
-
-  return score;
-}
-
-function difficultyFromScore(score: number): ScenarioDifficulty {
-  if (score >= 21) return "easy";
-  if (score >= 17) return "medium";
-  return "hard";
-}
-
-function getRaiseSize(stackBB: number): string {
+function getRaiseSize(
+  stackBB: number
+): string {
   if (stackBB <= 16) return "2.0 BB";
   if (stackBB <= 24) return "2.2 BB";
   if (stackBB <= 40) return "2.3 BB";
+
   return "2.5 BB";
 }
 
-function openRaiseDecision(hand: string, position: string, stackBB: number): string {
-  const score = getHandScore(hand);
-
-  const thresholdByPosition: Record<string, number> = {
-    UTG: 21,
-    HJ: 19.5,
-    MP: 18.8,
-    CO: 16.5,
-    BTN: 14.3,
-    SB: 16.8,
-  };
-
-  const threshold = thresholdByPosition[position] ?? 18;
-
-  if (stackBB <= 10 && score >= threshold + 0.8) return "All-in";
-  if (score >= threshold) return "Raise";
-
-  return "Fold";
-}
-
-function pushFoldDecision(hand: string, position: string, stackBB: number): string {
-  const score = getHandScore(hand);
-
-  const baseByPosition: Record<string, number> = {
-    HJ: 19,
-    CO: 17.8,
-    BTN: 15.8,
-    SB: 14.2,
-  };
-
-  const base = baseByPosition[position] ?? 17;
-
-  const stackAdjustment =
-    stackBB <= 5 ? -2.2 :
-    stackBB <= 8 ? -1.4 :
-    stackBB <= 11 ? -0.4 :
-    stackBB >= 15 ? 1.7 :
-    0.7;
-
-  return score >= base + stackAdjustment ? "All-in" : "Fold";
-}
-
-function callVsPushDecision(
+function getDifficultyByRange(
   hand: string,
-  villainPosition: string,
-  stackBB: number
-): string {
-  const score = getHandScore(hand);
+  rangePercent: number
+): ScenarioDifficulty {
+  const index =
+    handRanking.indexOf(hand);
 
-  const thresholdByVillain: Record<string, number> = {
-    SB: 15.5,
-    BTN: 17.5,
-    CO: 19,
-    HJ: 20.5,
-    MP: 21.2,
-    UTG: 22,
-  };
+  if (index === -1) {
+    return "hard";
+  }
 
-  const stackAdjustment =
-    stackBB <= 7 ? -1.2 :
-    stackBB <= 10 ? -0.5 :
-    stackBB >= 15 ? 1.2 :
-    0;
+  const handPercent =
+    ((index + 1) /
+      handRanking.length) *
+    100;
 
-  const threshold = (thresholdByVillain[villainPosition] ?? 19) + stackAdjustment;
+  const distance = Math.abs(
+    handPercent - rangePercent
+  );
 
-  return score >= threshold ? "Call" : "Fold";
-}
+  if (distance <= 3) {
+    return "hard";
+  }
 
-function blindDefenseDecision(
-  hand: string,
-  villainPosition: string,
-  openSizeBB: number
-): string {
-  const score = getHandScore(hand);
+  if (distance <= 8) {
+    return "medium";
+  }
 
-  const pressureByPosition: Record<string, number> = {
-    UTG: 2.2,
-    MP: 1.6,
-    HJ: 1.1,
-    CO: 0.4,
-    BTN: -0.6,
-    SB: -1.1,
-  };
-
-  const sizePressure = openSizeBB >= 3 ? 1.3 : openSizeBB >= 2.5 ? 0.6 : 0;
-  const pressure = (pressureByPosition[villainPosition] ?? 0) + sizePressure;
-
-  if (score >= 22.5 + pressure) return "Raise";
-  if (score >= 15.2 + pressure) return "Call";
-
-  return "Fold";
+  return "easy";
 }
 
 function addScenario(
@@ -224,155 +90,644 @@ function addScenario(
   });
 }
 
-function buildScenarios(): Scenario[] {
-  const hands = buildHands();
-  const scenarios: Scenario[] = [];
+function buildOpenRaiseScenarios(
+  scenarios: Scenario[]
+) {
+  const spots = [
+    {
+      players: 9,
+      position: "UTG",
+      stackBB: 25,
+      rangePercent: 14,
+    },
 
-  const playerCounts = [6, 9];
+    {
+      players: 9,
+      position: "MP",
+      stackBB: 25,
+      rangePercent: 18,
+    },
 
-  const openPositions = ["UTG", "HJ", "MP", "CO", "BTN", "SB"];
-  const openStacks = [10, 12, 15, 18, 22, 25, 30, 40, 50];
+    {
+      players: 9,
+      position: "HJ",
+      stackBB: 25,
+      rangePercent: 22,
+    },
 
-  for (const hand of hands) {
-    for (const position of openPositions) {
-      for (const stackBB of openStacks) {
-        const correctAction = openRaiseDecision(hand, position, stackBB);
-        const score = getHandScore(hand);
+    {
+      players: 9,
+      position: "CO",
+      stackBB: 25,
+      rangePercent: 30,
+    },
 
-        addScenario(scenarios, {
-          model: "MTT_STANDARD",
-          category: "OPEN_RAISE",
-          difficulty: difficultyFromScore(score),
-          players: playerCounts[scenarios.length % playerCounts.length],
-          position,
-          stackBB,
+    {
+      players: 9,
+      position: "BTN",
+      stackBB: 25,
+      rangePercent: 45,
+    },
+
+    {
+      players: 9,
+      position: "SB",
+      stackBB: 25,
+      rangePercent: 38,
+    },
+
+    {
+      players: 6,
+      position: "UTG",
+      stackBB: 30,
+      rangePercent: 20,
+    },
+
+    {
+      players: 6,
+      position: "HJ",
+      stackBB: 30,
+      rangePercent: 24,
+    },
+
+    {
+      players: 6,
+      position: "CO",
+      stackBB: 30,
+      rangePercent: 32,
+    },
+
+    {
+      players: 6,
+      position: "BTN",
+      stackBB: 30,
+      rangePercent: 48,
+    },
+
+    {
+      players: 6,
+      position: "SB",
+      stackBB: 30,
+      rangePercent: 42,
+    },
+
+    {
+      players: 6,
+      position: "BTN",
+      stackBB: 15,
+      rangePercent: 42,
+    },
+
+    {
+      players: 6,
+      position: "CO",
+      stackBB: 15,
+      rangePercent: 28,
+    },
+
+    {
+      players: 9,
+      position: "BTN",
+      stackBB: 15,
+      rangePercent: 40,
+    },
+
+    {
+      players: 9,
+      position: "CO",
+      stackBB: 15,
+      rangePercent: 26,
+    },
+  ];
+
+  for (const spot of spots) {
+    for (const hand of handRanking) {
+      const inRange =
+        isHandInTopPercent(
           hand,
-          actionBefore:
-            position === "UTG"
-              ? "You are first to act."
-              : "Action folds to you.",
-          options: ["Fold", "Raise", "All-in"],
-          correctAction,
-          raiseSizeBB:
-            correctAction === "Raise" ? getRaiseSize(stackBB) : undefined,
-          explanation:
-            correctAction === "Raise"
-              ? `${hand} is strong enough to open-raise from ${position} with ${stackBB} BB.`
-              : correctAction === "All-in"
-              ? `${hand} works well as a direct jam with ${stackBB} BB because you generate fold equity and have limited postflop maneuverability.`
-              : `${hand} is too weak to open profitably from ${position} with ${stackBB} BB.`,
-        });
-      }
-    }
-  }
-
-  const pushPositions = ["HJ", "CO", "BTN", "SB"];
-  const pushStacks = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-
-  for (const hand of hands) {
-    for (const position of pushPositions) {
-      for (const stackBB of pushStacks) {
-        const correctAction = pushFoldDecision(hand, position, stackBB);
-        const score = getHandScore(hand);
-
-        addScenario(scenarios, {
-          model: "CHIP_EV",
-          category: "PUSH_FOLD",
-          difficulty: difficultyFromScore(score),
-          players: playerCounts[scenarios.length % playerCounts.length],
-          position,
-          stackBB,
-          hand,
-          actionBefore: "Action folds to you.",
-          options: ["Fold", "All-in"],
-          correctAction,
-          explanation:
-            correctAction === "All-in"
-              ? `${hand} is a profitable jam from ${position} with ${stackBB} BB.`
-              : `${hand} is too weak for a standard jam from ${position} with ${stackBB} BB.`,
-        });
-      }
-    }
-  }
-
-  const villainPushPositions = ["UTG", "MP", "HJ", "CO", "BTN", "SB"];
-  const callStacks = [5, 6, 8, 10, 12, 14, 16, 18];
-
-  for (const hand of hands) {
-    for (const villainPosition of villainPushPositions) {
-      for (const stackBB of callStacks) {
-        const correctAction = callVsPushDecision(
-          hand,
-          villainPosition,
-          stackBB
+          spot.rangePercent
         );
-        const score = getHandScore(hand);
 
-        addScenario(scenarios, {
-          model: "CHIP_EV",
-          category: "CALL_VS_PUSH",
-          difficulty: difficultyFromScore(score),
-          players: playerCounts[scenarios.length % playerCounts.length],
-          position: "BB",
-          stackBB,
-          hand,
-          actionBefore: `${villainPosition} jams all-in. You are in the BB.`,
-          options: ["Fold", "Call"],
-          correctAction,
-          explanation:
-            correctAction === "Call"
-              ? `${hand} has enough equity to call against a typical ${villainPosition} shoving range.`
-              : `${hand} does not have enough equity to call against a typical ${villainPosition} shoving range.`,
-        });
-      }
+      const correctAction =
+        inRange
+          ? "Raise"
+          : "Fold";
+
+      addScenario(scenarios, {
+        model: "MTT_STANDARD",
+
+        category: "OPEN_RAISE",
+
+        difficulty:
+          getDifficultyByRange(
+            hand,
+            spot.rangePercent
+          ),
+
+        players: spot.players,
+
+        position: spot.position,
+
+        stackBB: spot.stackBB,
+
+        hand,
+
+        actionBefore:
+          spot.position === "UTG"
+            ? "You are first to act."
+            : "Action folds to you.",
+
+        options: [
+          "Fold",
+          "Raise",
+        ],
+
+        correctAction,
+
+        raiseSizeBB: inRange
+          ? getRaiseSize(
+              spot.stackBB
+            )
+          : undefined,
+
+        rangePercent:
+          spot.rangePercent,
+
+        explanation: inRange
+          ? `${hand} is inside the recommended top ${spot.rangePercent}% opening range from ${spot.position} with ${spot.stackBB} BB.`
+          : `${hand} is outside the recommended top ${spot.rangePercent}% opening range from ${spot.position} with ${spot.stackBB} BB.`,
+      });
     }
   }
-
-  const defenseVillains = ["UTG", "MP", "HJ", "CO", "BTN", "SB"];
-  const defenseStacks = [18, 22, 25, 30, 35, 40, 50];
-  const openSizes = [2.0, 2.2, 2.5, 3.0];
-
-  for (const hand of hands) {
-    for (const villainPosition of defenseVillains) {
-      for (const stackBB of defenseStacks) {
-        for (const openSizeBB of openSizes) {
-          const correctAction = blindDefenseDecision(
-            hand,
-            villainPosition,
-            openSizeBB
-          );
-          const score = getHandScore(hand);
-
-          addScenario(scenarios, {
-            model: "MTT_STANDARD",
-            category: "BLIND_DEFENSE",
-            difficulty: difficultyFromScore(score),
-            players: playerCounts[scenarios.length % playerCounts.length],
-            position: "BB",
-            stackBB,
-            hand,
-            actionBefore: `${villainPosition} opens to ${openSizeBB.toFixed(
-              1
-            )} BB. Everyone else folds. You are in the BB.`,
-            options: ["Fold", "Call", "Raise"],
-            correctAction,
-            raiseSizeBB:
-              correctAction === "Raise"
-                ? `${Math.round(openSizeBB * 3.2 * 10) / 10} BB`
-                : undefined,
-            explanation:
-              correctAction === "Raise"
-                ? `${hand} is strong enough to 3-bet against the ${villainPosition} open.`
-                : correctAction === "Call"
-                ? `${hand} is strong enough to defend the Big Blind against the ${villainPosition} open.`
-                : `${hand} is too weak to defend against the ${villainPosition} open.`,
-          });
-        }
-      }
-    }
-  }
-
-  return scenarios.slice(0, TARGET_SCENARIO_COUNT);
 }
 
-export const scenarios: Scenario[] = buildScenarios();
+function buildPushFoldScenarios(
+  scenarios: Scenario[]
+) {
+  const spots = [
+    {
+      players: 9,
+      position: "UTG",
+      stackBB: 10,
+      rangePercent: 12,
+    },
+
+    {
+      players: 9,
+      position: "MP",
+      stackBB: 10,
+      rangePercent: 18,
+    },
+
+    {
+      players: 9,
+      position: "HJ",
+      stackBB: 10,
+      rangePercent: 24,
+    },
+
+    {
+      players: 9,
+      position: "CO",
+      stackBB: 10,
+      rangePercent: 30,
+    },
+
+    {
+      players: 9,
+      position: "BTN",
+      stackBB: 10,
+      rangePercent: 48,
+    },
+
+    {
+      players: 9,
+      position: "SB",
+      stackBB: 10,
+      rangePercent: 72,
+    },
+
+    {
+      players: 6,
+      position: "UTG",
+      stackBB: 10,
+      rangePercent: 18,
+    },
+
+    {
+      players: 6,
+      position: "HJ",
+      stackBB: 10,
+      rangePercent: 28,
+    },
+
+    {
+      players: 6,
+      position: "CO",
+      stackBB: 10,
+      rangePercent: 38,
+    },
+
+    {
+      players: 6,
+      position: "BTN",
+      stackBB: 10,
+      rangePercent: 58,
+    },
+
+    {
+      players: 6,
+      position: "SB",
+      stackBB: 10,
+      rangePercent: 82,
+    },
+
+    {
+      players: 9,
+      position: "BTN",
+      stackBB: 8,
+      rangePercent: 58,
+    },
+
+    {
+      players: 9,
+      position: "SB",
+      stackBB: 8,
+      rangePercent: 92,
+    },
+
+    {
+      players: 6,
+      position: "BTN",
+      stackBB: 8,
+      rangePercent: 70,
+    },
+
+    {
+      players: 6,
+      position: "SB",
+      stackBB: 8,
+      rangePercent: 100,
+    },
+  ];
+
+  for (const spot of spots) {
+    for (const hand of handRanking) {
+      const inRange =
+        isHandInTopPercent(
+          hand,
+          spot.rangePercent
+        );
+
+      const correctAction =
+        inRange
+          ? "All-in"
+          : "Fold";
+
+      addScenario(scenarios, {
+        model: "CHIP_EV",
+
+        category: "PUSH_FOLD",
+
+        difficulty:
+          getDifficultyByRange(
+            hand,
+            spot.rangePercent
+          ),
+
+        players: spot.players,
+
+        position: spot.position,
+
+        stackBB: spot.stackBB,
+
+        hand,
+
+        actionBefore:
+          "Action folds to you.",
+
+        options: [
+          "Fold",
+          "All-in",
+        ],
+
+        correctAction,
+
+        rangePercent:
+          spot.rangePercent,
+
+        explanation: inRange
+          ? `${hand} is profitable as a shove from ${spot.position} with ${spot.stackBB} BB in Chip EV.`
+          : `${hand} is too weak to shove profitably from ${spot.position} with ${spot.stackBB} BB in Chip EV.`,
+      });
+    }
+  }
+}
+
+function buildCallVsPushScenarios(
+  scenarios: Scenario[]
+) {
+  const spots = [
+    {
+      villainPosition: "BTN",
+      players: 9,
+      stackBB: 10,
+      rangePercent: 38,
+    },
+
+    {
+      villainPosition: "CO",
+      players: 9,
+      stackBB: 10,
+      rangePercent: 28,
+    },
+
+    {
+      villainPosition: "HJ",
+      players: 9,
+      stackBB: 10,
+      rangePercent: 22,
+    },
+
+    {
+      villainPosition: "MP",
+      players: 9,
+      stackBB: 10,
+      rangePercent: 18,
+    },
+
+    {
+      villainPosition: "SB",
+      players: 9,
+      stackBB: 10,
+      rangePercent: 62,
+    },
+
+    {
+      villainPosition: "BTN",
+      players: 6,
+      stackBB: 10,
+      rangePercent: 48,
+    },
+
+    {
+      villainPosition: "CO",
+      players: 6,
+      stackBB: 10,
+      rangePercent: 34,
+    },
+
+    {
+      villainPosition: "HJ",
+      players: 6,
+      stackBB: 10,
+      rangePercent: 28,
+    },
+
+    {
+      villainPosition: "SB",
+      players: 6,
+      stackBB: 10,
+      rangePercent: 72,
+    },
+  ];
+
+  for (const spot of spots) {
+    const callPercent =
+      Math.max(
+        6,
+        spot.rangePercent * 0.42
+      );
+
+    for (const hand of handRanking) {
+      const canCall =
+        isHandInTopPercent(
+          hand,
+          callPercent
+        );
+
+      const correctAction =
+        canCall
+          ? "Call"
+          : "Fold";
+
+      addScenario(scenarios, {
+        model: "CHIP_EV",
+
+        category: "CALL_VS_PUSH",
+
+        difficulty:
+          getDifficultyByRange(
+            hand,
+            callPercent
+          ),
+
+        players: spot.players,
+
+        position: "BB",
+
+        stackBB: spot.stackBB,
+
+        hand,
+
+        actionBefore: `${spot.villainPosition} pushes all-in. You are in the BB.`,
+
+        options: [
+          "Fold",
+          "Call",
+        ],
+
+        correctAction,
+
+        rangePercent:
+          callPercent,
+
+        explanation: canCall
+          ? `${hand} performs well enough against a ${spot.villainPosition} shove range to call profitably.`
+          : `${hand} does not perform well enough against a ${spot.villainPosition} shove range to call profitably.`,
+      });
+    }
+  }
+}
+function buildBlindDefenseScenarios(
+  scenarios: Scenario[]
+) {
+  const spots = [
+    {
+      villainPosition: "UTG",
+      players: 9,
+      stackBB: 30,
+      openSizeBB: 2.2,
+      defendPercent: 18,
+      raisePercent: 5,
+    },
+
+    {
+      villainPosition: "MP",
+      players: 9,
+      stackBB: 30,
+      openSizeBB: 2.2,
+      defendPercent: 24,
+      raisePercent: 6,
+    },
+
+    {
+      villainPosition: "HJ",
+      players: 9,
+      stackBB: 30,
+      openSizeBB: 2.2,
+      defendPercent: 28,
+      raisePercent: 7,
+    },
+
+    {
+      villainPosition: "CO",
+      players: 9,
+      stackBB: 30,
+      openSizeBB: 2.2,
+      defendPercent: 36,
+      raisePercent: 9,
+    },
+
+    {
+      villainPosition: "BTN",
+      players: 9,
+      stackBB: 30,
+      openSizeBB: 2.2,
+      defendPercent: 50,
+      raisePercent: 12,
+    },
+
+    {
+      villainPosition: "SB",
+      players: 9,
+      stackBB: 30,
+      openSizeBB: 2.5,
+      defendPercent: 62,
+      raisePercent: 15,
+    },
+
+    {
+      villainPosition: "CO",
+      players: 6,
+      stackBB: 30,
+      openSizeBB: 2.2,
+      defendPercent: 40,
+      raisePercent: 10,
+    },
+
+    {
+      villainPosition: "BTN",
+      players: 6,
+      stackBB: 30,
+      openSizeBB: 2.2,
+      defendPercent: 56,
+      raisePercent: 13,
+    },
+
+    {
+      villainPosition: "SB",
+      players: 6,
+      stackBB: 30,
+      openSizeBB: 2.5,
+      defendPercent: 68,
+      raisePercent: 16,
+    },
+  ];
+
+  for (const spot of spots) {
+    for (const hand of handRanking) {
+      const inRaiseRange =
+        isHandInTopPercent(
+          hand,
+          spot.raisePercent
+        );
+
+      const inDefendRange =
+        isHandInTopPercent(
+          hand,
+          spot.defendPercent
+        );
+
+      const correctAction =
+        inRaiseRange
+          ? "Raise"
+          : inDefendRange
+          ? "Call"
+          : "Fold";
+
+      const borderPercent =
+        correctAction === "Raise"
+          ? spot.raisePercent
+          : spot.defendPercent;
+
+      addScenario(scenarios, {
+        model: "MTT_STANDARD",
+
+        category: "BLIND_DEFENSE",
+
+        difficulty:
+          getDifficultyByRange(
+            hand,
+            borderPercent
+          ),
+
+        players: spot.players,
+
+        position: "BB",
+
+        stackBB: spot.stackBB,
+
+        hand,
+
+        actionBefore: `${spot.villainPosition} opens to ${spot.openSizeBB} BB. Everyone else folds. You are in the BB.`,
+
+        options: [
+          "Fold",
+          "Call",
+          "Raise",
+        ],
+
+        correctAction,
+
+        raiseSizeBB:
+          correctAction === "Raise"
+            ? `${Math.round(
+                spot.openSizeBB *
+                  3.2 *
+                  10
+              ) / 10} BB`
+            : undefined,
+
+        rangePercent:
+          correctAction === "Raise"
+            ? spot.raisePercent
+            : spot.defendPercent,
+
+        explanation:
+          correctAction === "Raise"
+            ? `${hand} belongs to the recommended top ${spot.raisePercent}% 3-bet range against a ${spot.villainPosition} open.`
+            : correctAction === "Call"
+            ? `${hand} is outside the 3-bet range but inside the recommended top ${spot.defendPercent}% Big Blind defense range against a ${spot.villainPosition} open.`
+            : `${hand} is outside the recommended top ${spot.defendPercent}% Big Blind defense range against a ${spot.villainPosition} open.`,
+      });
+    }
+  }
+}
+
+function buildScenarios(): Scenario[] {
+  const scenarios: Scenario[] = [];
+
+  buildOpenRaiseScenarios(scenarios);
+  buildPushFoldScenarios(scenarios);
+  buildCallVsPushScenarios(scenarios);
+  buildBlindDefenseScenarios(scenarios);
+
+  return scenarios.slice(
+    0,
+    TARGET_SCENARIO_COUNT
+  );
+}
+
+export const scenarios: Scenario[] =
+  buildScenarios();

@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
+
 import { Scenario, scenarios } from "./types/scenario";
+
+import { getHandPercent } from "./lib/handRanking";
+
+import { getRequiredPercent } from "./lib/ranges";
+
 import CardBox from "./components/CardBox";
 
 const categories = [
@@ -9,6 +15,59 @@ const categories = [
   "CALL_VS_PUSH",
   "BLIND_DEFENSE",
 ];
+
+type RangeScenario = Scenario & {
+  requiredPercent?: number;
+  rangePercent?: number;
+};
+
+function getScenarioRangePercent(scenario: Scenario): number | null {
+  const rangeScenario = scenario as RangeScenario;
+
+  if (typeof rangeScenario.requiredPercent === "number") {
+    return rangeScenario.requiredPercent;
+  }
+
+  if (typeof rangeScenario.rangePercent === "number") {
+    return rangeScenario.rangePercent;
+  }
+
+  return null;
+}
+
+function getInRangeAction(scenario: Scenario): string {
+  switch (scenario.category) {
+    case "OPEN_RAISE":
+      return "Raise";
+    case "PUSH_FOLD":
+      return "All-in";
+    case "CALL_VS_PUSH":
+      return "Call";
+    case "BLIND_DEFENSE":
+      return "Call";
+    default:
+      return scenario.correctAction;
+  }
+}
+
+function getEffectiveCorrectAction(scenario: Scenario): string {
+  const requiredPercent =
+  getScenarioRangePercent(scenario) ??
+  getRequiredPercent(
+    scenario.category,
+    scenario.position,
+    scenario.stackBB
+  );
+
+  if (requiredPercent === null) {
+    return scenario.correctAction;
+  }
+
+  const handPercent = getHandPercent(scenario.hand);
+  const handIsInRange = handPercent <= requiredPercent;
+
+  return handIsInRange ? getInRangeAction(scenario) : "Fold";
+}
 
 function getRandomScenario(filteredScenarios: Scenario[]): Scenario {
   if (filteredScenarios.length === 0) {
@@ -79,6 +138,14 @@ export default function App() {
     [scenario.hand]
   );
 
+  const handPercent = useMemo(
+    () => getHandPercent(scenario.hand),
+    [scenario.hand]
+  );
+
+  const requiredPercent = getScenarioRangePercent(scenario);
+  const correctAction = getEffectiveCorrectAction(scenario);
+
   const [result, setResult] = useState("");
   const [answered, setAnswered] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState("");
@@ -92,7 +159,7 @@ export default function App() {
     setAnswered(true);
     setSelectedAnswer(answer);
 
-    if (answer === scenario.correctAction) {
+    if (answer === correctAction) {
       setResult("✅ Correct");
       setCorrectCount((prev) => prev + 1);
     } else {
@@ -128,7 +195,7 @@ export default function App() {
 
   function getButtonBackground(option: string) {
     if (answered) {
-      if (option === scenario.correctAction) return "#15803d";
+      if (option === correctAction) return "#15803d";
       if (option === selectedAnswer) return "#991b1b";
       return "#333";
     }
@@ -278,11 +345,7 @@ export default function App() {
               }}
             >
               {displayedCards.map((card, index) => (
-                <CardBox
-                  key={index}
-                  value={card.value}
-                  suit={card.suit}
-                />
+                <CardBox key={index} value={card.value} suit={card.suit} />
               ))}
             </div>
           </div>
@@ -348,13 +411,31 @@ export default function App() {
             <h2 style={{ marginTop: 0, marginBottom: "10px" }}>{result}</h2>
 
             <p>
-              <strong>Correct Action:</strong> {scenario.correctAction}
+              <strong>Correct Action:</strong> {correctAction}
             </p>
+
+            {requiredPercent !== null && (
+              <>
+                <p>
+                  <strong>Hand Percent:</strong> {handPercent}%
+                </p>
+
+                <p>
+                  <strong>Required Range:</strong> Top {requiredPercent}%
+                </p>
+
+                <p>
+                  <strong>Range Result:</strong>{" "}
+                  {handPercent <= requiredPercent
+                    ? "Hand is inside the range"
+                    : "Hand is outside the range"}
+                </p>
+              </>
+            )}
 
             {scenario.raiseSizeBB && (
               <p>
-                <strong>Recommended Raise Size:</strong>{" "}
-                {scenario.raiseSizeBB}
+                <strong>Recommended Raise Size:</strong> {scenario.raiseSizeBB}
               </p>
             )}
 
