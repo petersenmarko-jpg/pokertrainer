@@ -1,6 +1,16 @@
-export const OPEN_RAISE_RANGES: Record<string, number> = {
+export const OPEN_RAISE_RANGES_6MAX: Record<string, number> = {
+  UTG: 18,
+  HJ: 24,
+  CO: 30,
+  BTN: 48,
+  SB: 55,
+};
+
+export const OPEN_RAISE_RANGES_9MAX: Record<string, number> = {
   UTG: 14,
-  HJ: 20,
+  "UTG+1": 16,
+  MP: 18,
+  HJ: 22,
   CO: 30,
   BTN: 48,
   SB: 55,
@@ -32,14 +42,21 @@ export const BLIND_DEFENSE_RANGES: Record<string, number> = {
   SB: 30,
 };
 
+function getOpenRaiseRange(position: string, players: number): number {
+  const ranges = players >= 7 ? OPEN_RAISE_RANGES_9MAX : OPEN_RAISE_RANGES_6MAX;
+
+  return ranges[position] ?? 20;
+}
+
 export function getRequiredPercent(
   category: string,
   position: string,
-  stackBB: number
+  stackBB: number,
+  players: number
 ): number {
   switch (category) {
     case "OPEN_RAISE":
-      return OPEN_RAISE_RANGES[position] ?? 20;
+      return getOpenRaiseRange(position, players);
 
     case "PUSH_FOLD": {
       const ranges = PUSH_FOLD_RANGES[position];

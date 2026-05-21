@@ -56,10 +56,11 @@ function getEffectiveCorrectAction(scenario: Scenario): string {
   const requiredPercent =
   getScenarioRangePercent(scenario) ??
   getRequiredPercent(
-    scenario.category,
-    scenario.position,
-    scenario.stackBB
-  );
+  scenario.category,
+  scenario.position,
+  scenario.stackBB,
+  scenario.players
+);
 
   if (requiredPercent === null) {
     return scenario.correctAction;
@@ -324,7 +325,10 @@ export default function App() {
               marginBottom: "20px",
             }}
           >
-            <InfoTile label="Players" value={String(scenario.players)} />
+           <InfoTile
+  label="Table"
+  value={scenario.players >= 7 ? "9-Max" : "6-Max"}
+/>
             <InfoTile label="Position" value={scenario.position} />
             <InfoTile label="Stack" value={`${scenario.stackBB} BB`} />
           </div>
